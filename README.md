@@ -38,32 +38,35 @@ Ask Claude things like:
 
 ## Installation
 
-### Option A — pip (recommended for most users)
+### Option A — uvx from GitHub (recommended — no install, no clone)
+
+Requires [uv](https://docs.astral.sh/uv/getting-started/installation/). Fetches and runs directly from GitHub on demand, nothing left behind.
 
 ```bash
-pip install splunk-mcp
+uvx --from git+https://github.com/mceSystems/splunk-mcp-server.git splunk-mcp
 ```
 
-### Option B — uvx (no permanent install, always latest)
+### Option B — pip from GitHub (no clone)
 
 ```bash
-# No install step needed — uvx fetches and runs on demand
-uvx splunk-mcp
+pip install git+https://github.com/mceSystems/splunk-mcp-server.git
 ```
 
-[Install uv](https://docs.astral.sh/uv/getting-started/installation/) if you don't have it.
-
-### Option C — from source
+### Option C — from source (clone)
 
 ```bash
 git clone https://github.com/mceSystems/splunk-mcp-server
-cd splunk-mcp
+cd splunk-mcp-server
 pip install -e .
 ```
 
-### Option D — Docker
+### Option E — Docker (nothing installed)
+
+Build locally from source:
 
 ```bash
+git clone https://github.com/mceSystems/splunk-mcp-server
+cd splunk-mcp-server
 docker build -t splunk-mcp .
 ```
 
@@ -95,13 +98,14 @@ cp .env.example .env
 
 Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Application Support/Claude/claude_desktop_config.json` (macOS):
 
-### pip install
+### uvx from GitHub (recommended)
 
 ```json
 {
   "mcpServers": {
     "splunk": {
-      "command": "splunk-mcp",
+      "command": "uvx",
+      "args": ["--from", "git+https://github.com/mceSystems/splunk-mcp-server.git", "splunk-mcp"],
       "env": {
         "SPLUNK_HOST": "your-splunk-host",
         "SPLUNK_TOKEN": "your-bearer-token",
@@ -113,14 +117,13 @@ Edit `%APPDATA%\Claude\claude_desktop_config.json` (Windows) or `~/Library/Appli
 }
 ```
 
-### uvx (recommended — always runs the latest published version)
+### pip from GitHub
 
 ```json
 {
   "mcpServers": {
     "splunk": {
-      "command": "uvx",
-      "args": ["splunk-mcp"],
+      "command": "splunk-mcp",
       "env": {
         "SPLUNK_HOST": "your-splunk-host",
         "SPLUNK_TOKEN": "your-bearer-token",
@@ -281,22 +284,6 @@ List KV Store collections in the "lookup_editor" app
 ```
 Query the "asset_lookup" KV Store collection for records where type is "server"
 ```
-
----
-
-## Publishing to PyPI
-
-```bash
-pip install build twine
-
-# Build source dist + wheel
-python -m build
-
-# Upload (needs a PyPI account and API token)
-twine upload dist/*
-```
-
-Set your name and email in `pyproject.toml` before publishing.
 
 ---
 
