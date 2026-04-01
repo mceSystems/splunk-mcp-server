@@ -111,8 +111,8 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
         """Get detailed information about a specific Splunk index.
 
         Tries the REST metadata endpoint first. If the service account does not own
-        the index (HTTP 404), falls back to an SPL stats query to return event count
-        and time range.
+        the index (HTTP 404), falls back to a tstats query to return event count
+        and time range without a full index scan.
 
         Args:
             name: Index name (e.g. 'main', 'security', '_internal')

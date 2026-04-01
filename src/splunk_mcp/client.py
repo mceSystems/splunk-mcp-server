@@ -74,7 +74,8 @@ class SplunkClient:
         """Returns the search job SID."""
         # Generating commands (e.g. | tstats, | inputlookup) must be the first
         # command and must not be prefixed with "search".
-        search_query = query if (query.startswith("search ") or query.startswith("|")) else f"search {query}"
+        _q = query.lstrip()
+        search_query = query if (_q.startswith("search ") or _q.startswith("|")) else f"search {query}"
         response = await self._client.post(
             "/services/search/jobs",
             data={
@@ -158,7 +159,8 @@ class SplunkClient:
     ) -> list[dict[str, Any]]:
         # Generating commands (e.g. | tstats, | inputlookup) must be the first
         # command and must not be prefixed with "search".
-        search_query = query if (query.startswith("search ") or query.startswith("|")) else f"search {query}"
+        _q = query.lstrip()
+        search_query = query if (_q.startswith("search ") or _q.startswith("|")) else f"search {query}"
         response = await self._client.post(
             "/services/search/jobs/export",
             data={
