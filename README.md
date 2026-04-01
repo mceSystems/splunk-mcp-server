@@ -9,7 +9,7 @@ Ask Claude things like:
 - *"List all fired alerts from the last 24 hours"*
 - *"Show me the definition of the `normalize_src_ip` macro"*
 
-## Tools (26 total)
+## Tools (23 total)
 
 | Category | Tools |
 |---|---|
@@ -20,7 +20,7 @@ Ask Claude things like:
 | **Macros** | `splunk_list_macros`, `splunk_get_macro` |
 | **Users** | `splunk_list_users`, `splunk_get_user` |
 | **Roles** | `splunk_list_roles`, `splunk_get_role` |
-| **Permissions** | `splunk_get_object_acl`, `splunk_check_user_permissions`, `splunk_diagnose_access`, `splunk_list_app_permissions` |
+| **Permissions** | `splunk_get_object_acl` |
 | **Alerts** | `splunk_list_fired_alerts` |
 | **Apps** | `splunk_list_apps` |
 | **KV Store** | `splunk_list_kvstore_collections`, `splunk_query_kvstore` |

@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
-from ..client import SplunkAPIError
+import httpx
+
+from ..client import SplunkAPIError, SplunkTimeoutError
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -15,41 +17,88 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
     async def splunk_list_indexes(
         count: int = 100,
         include_internal: bool = False,
+        time_window: str = "-7d",
     ) -> str:
-        """List all Splunk indexes.
+        """List Splunk indexes that had events within the given time window.
+
+        Uses SPL-based discovery (index=* | stats by index) rather than the REST
+        /services/data/indexes endpoint, which only returns indexes the user owns.
+        Note: indexes that exist but have no events in the time window will not appear.
+        Enriches results with REST metadata (size, retention, status) where accessible.
 
         Args:
-            count: Maximum number of indexes to return (default 100)
-            include_internal: Include internal Splunk indexes like _internal, _audit (default False)
+            count: Maximum number of indexes to return, sorted by event volume (default 100)
+            include_internal: Include internal indexes like _internal, _audit (default False)
+            time_window: Lookback window for SPL discovery, e.g. '-7d', '-24h', '-30d' (default '-7d')
         """
         client: SplunkClient = get_client()
         try:
-            data = await client.list_indexes(count=count, include_internal=include_internal)
-            entries = data.get("entry", [])
-            if not entries:
-                return "No indexes found."
-            lines = [f"Found {len(entries)} index(es):"]
-            for entry in entries:
-                name = entry.get("name", "unknown")
-                content = entry.get("content", {})
-                total_event_count = content.get("totalEventCount", "unknown")
-                current_db_size_mb = content.get("currentDBSizeMB", "unknown")
-                max_total_data_size_mb = content.get("maxTotalDataSizeMB", "unknown")
-                frozen_time_period = content.get("frozenTimePeriodInSecs", "unknown")
-                disabled = content.get("disabled", False)
-                status = "disabled" if disabled else "enabled"
-                lines.append(
-                    f"\n  {name} [{status}]\n"
-                    f"    Events: {total_event_count:,}" if isinstance(total_event_count, int)
-                    else f"\n  {name} [{status}]\n"
-                    f"    Events: {total_event_count}"
+            count = max(1, int(count))
+            index_filter = "index=*" if include_internal else "index=* NOT (index=_*)"
+            spl = (
+                f"{index_filter} "
+                f"| stats count as event_count by index "
+                f"| sort - event_count "
+                f"| head {count}"
+            )
+            result = await client.search_and_wait(
+                query=spl,
+                earliest_time=time_window,
+                latest_time="now",
+                max_count=count,
+            )
+            rows = result.get("results", [])
+            if not rows:
+                return (
+                    f"No indexes with events in the last {time_window} were found. "
+                    "Indexes may exist but have no data in this window, or may be "
+                    "excluded by the current filters (e.g. internal indexes)."
                 )
-                lines.append(f"    Size: {current_db_size_mb} MB / {max_total_data_size_mb} MB max")
-                if isinstance(frozen_time_period, int):
-                    days = frozen_time_period // 86400
-                    lines.append(f"    Retention: {days} days")
+
+            # Best-effort REST enrichment for metadata (size, retention, status)
+            meta: dict[str, dict[str, Any]] = {}
+            try:
+                # Use count=0 (unlimited) so REST metadata covers all discovered indexes
+                # regardless of how REST sorts its results vs SPL event volume ordering
+                rest_data = await client.list_indexes(count=0, include_internal=include_internal)
+                for entry in rest_data.get("entry", []):
+                    name = entry.get("name", "")
+                    c = entry.get("content", {})
+                    frozen_secs = c.get("frozenTimePeriodInSecs", 0)
+                    meta[name] = {
+                        "disabled": c.get("disabled", False),
+                        "current_size_mb": c.get("currentDBSizeMB", "unknown"),
+                        "max_size_mb": c.get("maxTotalDataSizeMB", "unknown"),
+                        "retention_days": int(frozen_secs) // 86400 if isinstance(frozen_secs, (int, float)) else "unknown",
+                    }
+            except (SplunkAPIError, SplunkTimeoutError, httpx.HTTPError):
+                pass
+
+            lines = [f"Found {len(rows)} index(es) with events in the last {time_window} (sorted by volume):"]
+            for row in rows:
+                name = row.get("index", "unknown")
+                event_count = row.get("event_count", "unknown")
+                m = meta.get(name, {})
+
+                try:
+                    event_count_fmt = f"{int(event_count):,}"
+                except (ValueError, TypeError):
+                    event_count_fmt = str(event_count)
+
+                disabled = m.get("disabled", False)
+                lines.append(f"\n  {name}" + (" [disabled]" if disabled else ""))
+                lines.append(f"    Events ({time_window}): {event_count_fmt}")
+                size = m.get("current_size_mb", "unknown")
+                max_size = m.get("max_size_mb", "unknown")
+                retention = m.get("retention_days", "unknown")
+                if size != "unknown":
+                    lines.append(f"    Size: {size} MB / {max_size} MB max")
+                if retention != "unknown":
+                    lines.append(f"    Retention: {retention} days")
             return "\n".join(lines)
         except SplunkAPIError as e:
+            return str(e)
+        except SplunkTimeoutError as e:
             return str(e)
 
     @mcp.tool()
