@@ -31,6 +31,7 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
         """
         client: SplunkClient = get_client()
         try:
+            count = max(1, int(count))
             index_filter = "index=*" if include_internal else "index=* NOT (index=_*)"
             spl = (
                 f"{index_filter} "
@@ -51,7 +52,9 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
             # Best-effort REST enrichment for metadata (size, retention, status)
             meta: dict[str, dict[str, Any]] = {}
             try:
-                rest_data = await client.list_indexes(count=count, include_internal=include_internal)
+                # Use count=0 (unlimited) so REST metadata covers all discovered indexes
+                # regardless of how REST sorts its results vs SPL event volume ordering
+                rest_data = await client.list_indexes(count=0, include_internal=include_internal)
                 for entry in rest_data.get("entry", []):
                     name = entry.get("name", "")
                     c = entry.get("content", {})
