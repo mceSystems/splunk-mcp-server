@@ -1,0 +1,41 @@
+#!/bin/sh
+# Local pre-push hook that helps prevent accidental direct pushes to main.
+# Project policy is that changes go through a feature/ branch; this hook helps enforce that locally.
+
+while read -r local_ref local_sha remote_ref remote_sha; do
+    if echo "$remote_ref" | grep -qE '^refs/heads/main$'; then
+        echo ""
+        echo "  BLOCKED: Direct push to 'main' is not allowed."
+        echo "  Create a feature branch and open a PR instead:"
+        echo ""
+        echo "    git checkout -b feature/<your-feature-name>"
+        echo "    git push origin feature/<your-feature-name>"
+        echo ""
+        echo "  To bypass this hook intentionally (use with care):"
+        echo "    git push --no-verify"
+        echo ""
+        exit 1
+    fi
+
+    # Only enforce the feature/ prefix on branch refs (not tags or other refs)
+    if ! echo "$remote_ref" | grep -qE '^refs/heads/'; then
+        continue
+    fi
+
+    branch=$(echo "$remote_ref" | sed 's|refs/heads/||')
+    if ! echo "$branch" | grep -qE '^feature/'; then
+        echo ""
+        echo "  BLOCKED: Branch '$branch' does not start with 'feature/'."
+        echo "  Rename your current branch to use a 'feature/' prefix, then push it:"
+        echo ""
+        echo "    git branch -m feature/<your-feature-name>"
+        echo "    git push origin HEAD:feature/<your-feature-name>"
+        echo ""
+        echo "  To bypass this hook intentionally (use with care):"
+        echo "    git push --no-verify"
+        echo ""
+        exit 1
+    fi
+done
+
+exit 0
