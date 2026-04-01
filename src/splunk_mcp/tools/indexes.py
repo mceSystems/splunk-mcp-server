@@ -15,32 +15,32 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
     async def splunk_list_indexes(
         count: int = 100,
         include_internal: bool = False,
+        time_window: str = "-7d",
     ) -> str:
         """List Splunk indexes searchable by the current user.
 
-        Uses SPL-based discovery (index=* | stats by index) over the last 7 days,
-        which reliably returns all indexes the user can search — unlike the REST
-        /services/data/indexes endpoint, which only returns indexes the user owns.
-
-        Results include event count from the past 7 days plus available REST metadata
-        (size, retention, enabled status) where accessible.
+        Uses SPL-based discovery (index=* | stats by index) rather than the REST
+        /services/data/indexes endpoint, which only returns indexes the user owns —
+        not all indexes they can search. Enriches results with REST metadata (size,
+        retention, status) where accessible.
 
         Args:
             count: Maximum number of indexes to return, sorted by event volume (default 100)
-            include_internal: Include internal Splunk indexes like _internal, _audit (default False)
+            include_internal: Include internal indexes like _internal, _audit (default False)
+            time_window: Lookback window for SPL discovery, e.g. '-7d', '-24h', '-30d' (default '-7d')
         """
         client: SplunkClient = get_client()
         try:
             index_filter = "index=*" if include_internal else "index=* NOT (index=_*)"
             spl = (
-                f"{index_filter} earliest=-7d latest=now "
-                f"| stats count as event_count_7d by index "
-                f"| sort - event_count_7d "
+                f"{index_filter} earliest={time_window} latest=now "
+                f"| stats count as event_count by index "
+                f"| sort - event_count "
                 f"| head {count}"
             )
             result = await client.search_and_wait(
                 query=spl,
-                earliest_time="-7d",
+                earliest_time=time_window,
                 latest_time="now",
                 max_count=count,
             )
@@ -48,7 +48,7 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
             if not rows:
                 return "No indexes found."
 
-            # Phase 2: best-effort REST enrichment for metadata (size, retention, status)
+            # Best-effort REST enrichment for metadata
             meta: dict[str, dict[str, Any]] = {}
             try:
                 rest_data = await client.list_indexes(count=500, include_internal=include_internal)
@@ -63,59 +63,30 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
                         "retention_days": int(frozen_secs) // 86400 if isinstance(frozen_secs, (int, float)) else "unknown",
                     }
             except Exception:
-                pass  # mcp_user may not have REST metadata access — that's fine
+                pass
 
-            lines = [f"Found {len(rows)} index(es) (sorted by 7-day event volume):"]
+            lines = [f"Found {len(rows)} index(es) (sorted by event volume over {time_window}):"]
             for row in rows:
                 name = row.get("index", "unknown")
-                event_count = row.get("event_count_7d", "unknown")
+                event_count = row.get("event_count", "unknown")
                 m = meta.get(name, {})
                 disabled = m.get("disabled", False)
-                status = "disabled" if disabled else "enabled"
-                size = m.get("current_size_mb", "unknown")
-                max_size = m.get("max_size_mb", "unknown")
-                retention = m.get("retention_days", "unknown")
 
                 try:
                     event_count_fmt = f"{int(event_count):,}"
                 except (ValueError, TypeError):
                     event_count_fmt = str(event_count)
 
-                lines.append(f"\n  {name}" + (f" [{status}]" if disabled else ""))
-                lines.append(f"    Events (7d): {event_count_fmt}")
+                lines.append(f"\n  {name}" + (" [disabled]" if disabled else ""))
+                lines.append(f"    Events ({time_window}): {event_count_fmt}")
+                size = m.get("current_size_mb", "unknown")
+                max_size = m.get("max_size_mb", "unknown")
+                retention = m.get("retention_days", "unknown")
                 if size != "unknown":
                     lines.append(f"    Size: {size} MB / {max_size} MB max")
                 if retention != "unknown":
                     lines.append(f"    Retention: {retention} days")
             return "\n".join(lines)
-        except SplunkAPIError as e:
-            return str(e)
-        except SplunkTimeoutError as e:
-            return str(e)
-
-    @mcp.tool()
-    async def splunk_count_indexes(time_window: str = "-7d") -> str:
-        """Return the total count of distinct indexes searchable by the current user.
-
-        Faster than splunk_list_indexes when only the count is needed.
-
-        Args:
-            time_window: Lookback window for SPL discovery (default '-7d')
-        """
-        client: SplunkClient = get_client()
-        try:
-            spl = f"index=* earliest={time_window} latest=now | stats dc(index) as total_indexes"
-            result = await client.search_and_wait(
-                query=spl,
-                earliest_time=time_window,
-                latest_time="now",
-                max_count=1,
-            )
-            rows = result.get("results", [])
-            if not rows:
-                return "Could not determine index count."
-            total = rows[0].get("total_indexes", 0)
-            return f"Total searchable indexes: {total} (discovered over {time_window} window)"
         except SplunkAPIError as e:
             return str(e)
         except SplunkTimeoutError as e:

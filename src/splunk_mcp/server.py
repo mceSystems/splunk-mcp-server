@@ -57,7 +57,7 @@ kvstore.register(mcp, get_client)
 macros.register(mcp, get_client)
 users.register(mcp, get_client)
 roles.register(mcp, get_client)
-permissions.register(mcp, get_client)
+permissions.register(mcp, get_client)  # splunk_get_object_acl only
 
 
 def main() -> None:
