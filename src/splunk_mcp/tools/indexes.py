@@ -1,11 +1,15 @@
 from __future__ import annotations
 
 import datetime
+import re
 from typing import TYPE_CHECKING, Any
 
 import httpx
 
 from ..client import SplunkAPIError, SplunkTimeoutError
+
+# Splunk index names may only contain alphanumerics, underscores, and hyphens.
+_INDEX_NAME_RE = re.compile(r'^[a-zA-Z0-9_\-]+$')
 
 if TYPE_CHECKING:
     from mcp.server.fastmcp import FastMCP
@@ -135,33 +139,43 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
         except SplunkAPIError as e:
             if e.status_code != 404:
                 return str(e)
+        except (SplunkTimeoutError, httpx.HTTPError) as e:
+            return str(e)
 
         # REST returned 404 — service account doesn't own this index.
-        # Fall back to SPL for basic event stats.
+        # Fall back to tstats for fast index-level metadata (no full scan).
+        if not _INDEX_NAME_RE.match(name):
+            return f"Invalid index name '{name}': only alphanumerics, underscores, and hyphens are allowed."
         try:
             result = await client.search_and_wait(
-                query=f"index={name} | stats count as event_count, min(_time) as first_event, max(_time) as last_event",
+                query=(
+                    f"| tstats count as event_count, "
+                    f"min(_time) as first_event, "
+                    f"max(_time) as last_event "
+                    f"where index={name}"
+                ),
                 earliest_time="0",
                 latest_time="now",
                 max_count=1,
             )
             rows = result.get("results", [])
-            if not rows:
+            row = rows[0] if rows else {}
+            event_count = row.get("event_count", "0")
+            if not rows or str(event_count) == "0":
                 return f"Index '{name}': REST metadata unavailable and no events found via SPL (index may not exist or be empty)."
-            row = rows[0]
             first = row.get("first_event", "unknown")
             last = row.get("last_event", "unknown")
             try:
-                if first != "unknown":
+                if first not in ("unknown", "", None):
                     first = datetime.datetime.utcfromtimestamp(float(first)).strftime("%Y-%m-%d %H:%M:%S UTC")
-                if last != "unknown":
+                if last not in ("unknown", "", None):
                     last = datetime.datetime.utcfromtimestamp(float(last)).strftime("%Y-%m-%d %H:%M:%S UTC")
             except (ValueError, TypeError, OSError):
                 pass
             return (
                 f"Index: {name}\n"
                 f"(REST metadata unavailable — service account does not own this index)\n"
-                f"Events (all time): {row.get('event_count', 'unknown')}\n"
+                f"Events (all time): {event_count}\n"
                 f"First event: {first}\n"
                 f"Last event: {last}"
             )
