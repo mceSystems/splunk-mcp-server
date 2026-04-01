@@ -2,7 +2,7 @@
 # Prevents accidental direct pushes to main (even as admin).
 # All changes must go through a feature/ branch.
 
-while read local_ref local_sha remote_ref remote_sha; do
+while read -r local_ref local_sha remote_ref remote_sha; do
     if echo "$remote_ref" | grep -qE '^refs/heads/main$'; then
         echo ""
         echo "  BLOCKED: Direct push to 'main' is not allowed."
