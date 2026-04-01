@@ -21,10 +21,10 @@ while read local_ref local_sha remote_ref remote_sha; do
     if ! echo "$branch" | grep -qE '^feature/'; then
         echo ""
         echo "  BLOCKED: Branch '$branch' does not start with 'feature/'."
-        echo "  Rename your branch:"
+        echo "  Rename your current branch to use a 'feature/' prefix, then push it:"
         echo ""
-        echo "    git branch -m $branch feature/$branch"
-        echo "    git push origin feature/$branch"
+        echo "    git branch -m feature/<your-feature-name>"
+        echo "    git push origin HEAD:feature/<your-feature-name>"
         echo ""
         echo "  To bypass this hook intentionally (use with care):"
         echo "    git push --no-verify"
