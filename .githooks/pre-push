@@ -1,6 +1,6 @@
 #!/bin/sh
-# Prevents accidental direct pushes to main (even as admin).
-# All changes must go through a feature/ branch.
+# Local pre-push hook that helps prevent accidental direct pushes to main.
+# Project policy is that changes go through a feature/ branch; this hook helps enforce that locally.
 
 while read -r local_ref local_sha remote_ref remote_sha; do
     if echo "$remote_ref" | grep -qE '^refs/heads/main$'; then
