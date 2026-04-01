@@ -17,12 +17,12 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
         include_internal: bool = False,
         time_window: str = "-7d",
     ) -> str:
-        """List Splunk indexes searchable by the current user.
+        """List Splunk indexes that had events within the given time window.
 
         Uses SPL-based discovery (index=* | stats by index) rather than the REST
-        /services/data/indexes endpoint, which only returns indexes the user owns —
-        not all indexes they can search. Enriches results with REST metadata (size,
-        retention, status) where accessible.
+        /services/data/indexes endpoint, which only returns indexes the user owns.
+        Note: indexes that exist but have no events in the time window will not appear.
+        Enriches results with REST metadata (size, retention, status) where accessible.
 
         Args:
             count: Maximum number of indexes to return, sorted by event volume (default 100)
@@ -33,7 +33,7 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
         try:
             index_filter = "index=*" if include_internal else "index=* NOT (index=_*)"
             spl = (
-                f"{index_filter} earliest={time_window} latest=now "
+                f"{index_filter} "
                 f"| stats count as event_count by index "
                 f"| sort - event_count "
                 f"| head {count}"
@@ -48,10 +48,10 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
             if not rows:
                 return "No indexes found."
 
-            # Best-effort REST enrichment for metadata
+            # Best-effort REST enrichment for metadata (size, retention, status)
             meta: dict[str, dict[str, Any]] = {}
             try:
-                rest_data = await client.list_indexes(count=500, include_internal=include_internal)
+                rest_data = await client.list_indexes(count=count, include_internal=include_internal)
                 for entry in rest_data.get("entry", []):
                     name = entry.get("name", "")
                     c = entry.get("content", {})
@@ -62,21 +62,21 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
                         "max_size_mb": c.get("maxTotalDataSizeMB", "unknown"),
                         "retention_days": int(frozen_secs) // 86400 if isinstance(frozen_secs, (int, float)) else "unknown",
                     }
-            except Exception:
+            except (SplunkAPIError, SplunkTimeoutError):
                 pass
 
-            lines = [f"Found {len(rows)} index(es) (sorted by event volume over {time_window}):"]
+            lines = [f"Found {len(rows)} index(es) with events in the last {time_window} (sorted by volume):"]
             for row in rows:
                 name = row.get("index", "unknown")
                 event_count = row.get("event_count", "unknown")
                 m = meta.get(name, {})
-                disabled = m.get("disabled", False)
 
                 try:
                     event_count_fmt = f"{int(event_count):,}"
                 except (ValueError, TypeError):
                     event_count_fmt = str(event_count)
 
+                disabled = m.get("disabled", False)
                 lines.append(f"\n  {name}" + (" [disabled]" if disabled else ""))
                 lines.append(f"    Events ({time_window}): {event_count_fmt}")
                 size = m.get("current_size_mb", "unknown")
