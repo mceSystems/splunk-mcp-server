@@ -102,7 +102,7 @@ splunk_list_users()
 splunk_get_user(username="alice")
 splunk_list_roles()
 splunk_get_role(name="power")
-splunk_get_object_acl(object_type="saved/searches", name="my_search", app="search")
+splunk_get_object_acl(object_type="saved_search", name="my_search", app="search")
 ```
 
 ### 4. Work with saved searches and alerts
@@ -123,9 +123,10 @@ splunk_search_export('index=main error', earliest_time='-7d', max_results=5000)
 
 # Option B: manual job polling (for very long searches)
 splunk_search('index=main | rare host')                    # blocks up to SPLUNK_MAX_WAIT
-# If it times out, you get the SID back — then:
-splunk_get_job_status(sid="<sid>")                         # wait for dispatchState=DONE
-splunk_get_job_results(sid="<sid>", count=500, offset=0)  # paginate as needed
+# If it times out, the error message includes the SID — the job is still running:
+#   "Search timed out after 120s. Job is still running — poll status with SID '1234567890.1'"
+splunk_get_job_status(sid="<sid from error>")              # wait for dispatchState=DONE
+splunk_get_job_results(sid="<sid from error>", count=500, offset=0)
 ```
 
 ---
@@ -136,7 +137,7 @@ splunk_get_job_results(sid="<sid>", count=500, offset=0)  # paginate as needed
 |----------|-----|
 | Quick ad-hoc query, ≤100 rows | `splunk_search` |
 | Exporting thousands of rows | `splunk_search_export` |
-| Search you know will run >2 min | `splunk_search` → save SID → poll `splunk_get_job_status` → fetch with `splunk_get_job_results` |
+| Search you know will run >2 min | `splunk_search` → copy SID from timeout message → poll `splunk_get_job_status` → fetch with `splunk_get_job_results` |
 | Run a pre-built search | `splunk_run_saved_search` → poll → `splunk_get_job_results` |
 | Investigate why someone can't see data | `splunk_get_user` + `splunk_get_role` + `splunk_get_object_acl` |
 | Understand dashboard logic | `splunk_get_dashboard` (returns XML with embedded SPL panels) |
@@ -146,12 +147,14 @@ splunk_get_job_results(sid="<sid>", count=500, offset=0)  # paginate as needed
 
 ## Gotchas
 
-- **`splunk_list_indexes` uses SPL** — it queries `| tstats count where index=* groupby index`.
-  Indexes that had zero events in `time_window` (default `-7d`) won't appear.
-  Use a wider window (`time_window="-30d"`) or `splunk_get_index_info` for a specific known index.
+- **`splunk_list_indexes` uses SPL** — it runs `index=* | stats count as event_count by index`
+  (standard search, not `tstats`). Indexes that had zero events in `time_window` (default `-7d`)
+  won't appear. Use a wider window (`time_window="-30d"`) or `splunk_get_index_info` for a
+  specific known index.
 
 - **`splunk_search` blocks** until the job completes or `SPLUNK_MAX_WAIT` (default 120 s) expires.
-  For searches expected to run longer, use the manual SID workflow above.
+  On timeout the job is **preserved** (not deleted) and the error message includes the SID so
+  you can continue polling with `splunk_get_job_status` / `splunk_get_job_results`.
 
 - **`splunk_search_export` is one-shot** — no SID, no pagination, results stream back immediately.
   Use it when you know the query is fast but the result set is large.
@@ -163,8 +166,8 @@ splunk_get_job_results(sid="<sid>", count=500, offset=0)  # paginate as needed
   `splunk_list_dashboards` all accept an `app` parameter. Without it they search all apps,
   which can return duplicates if the same name exists in multiple apps.
 
-- **`splunk_get_object_acl` object_type** must be the REST endpoint path fragment, e.g.
-  `saved/searches`, `data/inputs/monitor`, `admin/macros`.
+- **`splunk_get_object_acl` object_type** must be one of the friendly keys:
+  `saved_search`, `dashboard`, `macro`, `lookup`, `eventtype`, `report`, `app`, `index`.
 
 ---
 

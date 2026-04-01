@@ -19,9 +19,13 @@ class SplunkAPIError(Exception):
 
 
 class SplunkTimeoutError(Exception):
-    def __init__(self, max_wait: float):
+    def __init__(self, max_wait: float, sid: str = ""):
         self.max_wait = max_wait
-        super().__init__(f"Search timed out after {max_wait:.0f}s")
+        self.sid = sid
+        msg = f"Search timed out after {max_wait:.0f}s"
+        if sid:
+            msg += f". Job is still running — poll status with SID '{sid}'"
+        super().__init__(msg)
 
 
 class SplunkClient:
@@ -118,6 +122,7 @@ class SplunkClient:
         elapsed = 0.0
         interval = 0.5
         max_interval = 5.0
+        timed_out = False
 
         try:
             while elapsed < max_wait:
@@ -131,14 +136,16 @@ class SplunkClient:
                 if dispatch_state in ("DONE", "FAILED", "FINALIZED"):
                     break
             else:
-                raise SplunkTimeoutError(max_wait)
+                timed_out = True
+                raise SplunkTimeoutError(max_wait, sid)
 
             if dispatch_state in ("FAILED",):
                 raise SplunkAPIError(500, f"Search job failed: {status.get('messages', '')}")
 
             return await self.get_job_results(sid, count=max_count)
         finally:
-            await self.delete_job(sid)
+            if not timed_out:
+                await self.delete_job(sid)
 
     async def search_export(
         self,
