@@ -179,5 +179,5 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
                 f"First event: {first}\n"
                 f"Last event: {last}"
             )
-        except (SplunkAPIError, SplunkTimeoutError) as e:
+        except (SplunkAPIError, SplunkTimeoutError, httpx.HTTPError) as e:
             return str(e)
