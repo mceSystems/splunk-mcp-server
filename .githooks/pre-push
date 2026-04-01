@@ -17,6 +17,11 @@ while read -r local_ref local_sha remote_ref remote_sha; do
         exit 1
     fi
 
+    # Only enforce the feature/ prefix on branch refs (not tags or other refs)
+    if ! echo "$remote_ref" | grep -qE '^refs/heads/'; then
+        continue
+    fi
+
     branch=$(echo "$remote_ref" | sed 's|refs/heads/||')
     if ! echo "$branch" | grep -qE '^feature/'; then
         echo ""
