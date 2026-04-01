@@ -1,37 +1,14 @@
 # Claude Code Instructions
 
-## Shell scripts and git hooks
+## Self-review before committing
 
-Before committing any shell script or git hook, verify all of the following manually:
+Before committing any code, review it as a critic — not as the author. Ask:
 
-**Checklist:**
-- [ ] Non-branch refs — tag pushes (`git push origin v1.0.0`) are not blocked
-- [ ] Working directory — works when run from a subdirectory; use `git rev-parse --show-toplevel` for paths
-- [ ] Git config scope — use `git config --local` unless global scope is explicitly intended
-- [ ] File permissions — setup scripts must `chmod +x` any hooks so they work on a fresh clone
-- [ ] Shell safety — use `read -r`, quote all variables
+- **Edge cases**: what inputs or conditions aren't covered? (e.g. non-branch refs for a git hook, empty results, unexpected types)
+- **Assumptions**: does the code assume a specific working directory, environment, or state that may not hold?
+- **Scope creep**: does a config change or side effect reach beyond this repo? (e.g. `git config` without `--local`)
+- **Permissions and setup**: will this work on a fresh clone with no manual steps?
+- **Error handling**: are failures caught specifically, or does a bare `except`/silent pass hide bugs?
+- **Accuracy**: do docstrings, comments, and README reflect what the code actually does — not what was intended?
 
-**Minimum test cases before committing a hook:**
-
-```sh
-# Tag push must be allowed
-git tag v0.0.0-test && git push origin v0.0.0-test
-git push origin :v0.0.0-test && git tag -d v0.0.0-test  # cleanup
-
-# feature/ branch must be allowed
-git checkout -b feature/test-hook && git push origin feature/test-hook
-git push origin :feature/test-hook  # cleanup
-
-# Push to main must be blocked
-git push origin HEAD:main
-
-# Non-feature/ branch must be blocked
-git checkout -b notafeature && git push origin notafeature
-git branch -D notafeature  # cleanup
-
-# Setup script from a subdirectory must work
-cd src && sh ../scripts/setup-hooks.sh && cd ..
-
-# Setup script outside a repo must fail cleanly with exit 1
-cd /tmp && sh /path/to/scripts/setup-hooks.sh
-```
+The goal is to find issues yourself rather than having them surface in code review.
