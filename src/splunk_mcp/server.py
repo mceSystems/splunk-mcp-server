@@ -10,6 +10,7 @@ from mcp.server.fastmcp import FastMCP
 
 from .client import SplunkClient
 from .config import get_settings
+from . import prompts as prompts_module
 from .tools import alerts, apps, dashboards, indexes, kvstore, macros, permissions, roles, saved_searches, search, server_info, users
 
 logging.basicConfig(level=logging.INFO)
@@ -58,6 +59,9 @@ macros.register(mcp, get_client)
 users.register(mcp, get_client)
 roles.register(mcp, get_client)
 permissions.register(mcp, get_client)  # splunk_get_object_acl only
+
+# Register prompts
+prompts_module.register(mcp)
 
 
 def main() -> None:
