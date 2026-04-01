@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import TYPE_CHECKING, Any
 
+import httpx
+
 from ..client import SplunkAPIError, SplunkTimeoutError
 
 if TYPE_CHECKING:
@@ -47,7 +49,11 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
             )
             rows = result.get("results", [])
             if not rows:
-                return "No indexes found."
+                return (
+                    f"No indexes with events in the last {time_window} were found. "
+                    "Indexes may exist but have no data in this window, or may be "
+                    "excluded by the current filters (e.g. internal indexes)."
+                )
 
             # Best-effort REST enrichment for metadata (size, retention, status)
             meta: dict[str, dict[str, Any]] = {}
@@ -65,7 +71,7 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
                         "max_size_mb": c.get("maxTotalDataSizeMB", "unknown"),
                         "retention_days": int(frozen_secs) // 86400 if isinstance(frozen_secs, (int, float)) else "unknown",
                     }
-            except (SplunkAPIError, SplunkTimeoutError):
+            except (SplunkAPIError, SplunkTimeoutError, httpx.HTTPError):
                 pass
 
             lines = [f"Found {len(rows)} index(es) with events in the last {time_window} (sorted by volume):"]

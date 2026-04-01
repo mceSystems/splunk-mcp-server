@@ -32,7 +32,7 @@ def register(mcp: "FastMCP", get_client: Any) -> None:
         """Get the ACL (owner, sharing, read/write roles) for a named Splunk object.
 
         Args:
-            object_type: One of: dashboard, saved_search, macro, lookup, eventtype, app, index
+            object_type: One of: dashboard, saved_search, report (alias for saved_search), macro, lookup, eventtype, app, index
             name: Object name
             app: App context (ignored for object_type='app' or 'index')
         """
